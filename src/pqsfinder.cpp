@@ -76,6 +76,7 @@ typedef struct flags {
   bool verbose;
   bool debug;
   bool use_default_scoring;
+  bool optimize;
 } flags_t;
 
 typedef struct opts {
@@ -332,7 +333,7 @@ inline bool run_regex_search(
     boost::smatch &boost_m,
     const boost::regex &run_re_c)
 {
-  Rcout << "run_regex_search" << endl;
+  //Rcout << "run_regex_search" << endl;
   
   try {
     return boost::regex_search(start, end, boost_m, run_re_c, boost::match_default);
@@ -491,6 +492,9 @@ void find_all_runs(
     chrono::system_clock::time_point s_time)
 {
   //Rcout << "find_all_runs" << endl;
+  //Rcout << "start: " << *start << endl;
+  Rcout << "i: " << i << endl;
+  
   string::const_iterator s, e, min_e;
   int score, loop_len;
   pqs_cache::entry *cache_hit;
@@ -782,7 +786,8 @@ SEXP pqsfinder(
     std::string run_re = "G{1,10}.{0,9}G{1,10}",
     SEXP custom_scoring_fn = R_NilValue,
     bool use_default_scoring = true,
-    bool verbose = false)
+    bool verbose = false,
+    bool optimize = true)
 {
   Rcout << "pqsfinder" << endl;
   if (max_len < 1)
@@ -829,6 +834,7 @@ SEXP pqsfinder(
   flags.debug = true;
   flags.verbose = verbose;
   flags.use_default_scoring = use_default_scoring;
+  flags.optimize = optimize;
 
   if (run_re != "G{1,10}.{0,9}G{1,10}") {
     // User specified its own regexp, force to use regexp engine
@@ -876,6 +882,7 @@ SEXP pqsfinder(
     Rcout << "Use regexp engine: " << flags.use_re << endl;
     Rcout << "Input sequence length: " << seq.length() << endl;
     Rcout << "Use user fn: " << (custom_scoring_fn != R_NilValue) << endl;
+    Rcout << "Use optimalization: " << flags.optimize << endl;
   }
 
   if (custom_scoring_fn != R_NilValue) {
