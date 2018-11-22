@@ -95,6 +95,8 @@ class run_match {
 public:
   string::const_iterator first;
   string::const_iterator second;
+  int consec_g_count_start;
+  int consec_g_count_end;
   int length() const {
     return second - first;
   };
@@ -115,7 +117,9 @@ inline void print_pqs(const run_match m[], int score, const string::const_iterat
   Rcout << m[0].first - ref + 1 << "-" << m[3].second - ref << " " << "[" << string(m[0].first, m[0].second) << "]";
   for (int i = 1; i < RUN_CNT; i++)
     Rcout << string(m[i-1].second, m[i].first) << "[" << string(m[i].first, m[i].second) << "]";
-  Rcout << " " << score << endl;
+  for (int i = 0; i < RUN_CNT; i++) // test cout
+    Rcout << " " << m[i].consec_g_count_start << "|" << m[i].consec_g_count_end;
+  Rcout << " " << score << endl;;
 }
 
 
@@ -150,7 +154,6 @@ void count_g(std::string seq) {
   m.first = seq.begin();
   m.second = seq.end();
   int cnt = count_g_num(m);
-  Rcout << cnt << endl;
 }
 
 
@@ -179,7 +182,7 @@ inline int score_run_defects(
   
   for (int i = 0; i < RUN_CNT; ++i) {
     if (w[i] == w[pi] && g[i] == g[pi]) {
-      ++perfects;
+      ++perfects; // naco ?
     } else if ((w[i] == w[pi] && g[i] == g[pi] - 1)) {
       ++mismatches;
     } else if (w[i] > w[pi] && g[i] >= g[pi]) {
@@ -193,6 +196,8 @@ inline int score_run_defects(
       bulges <= sc.max_bulges &&
       mismatches + bulges <= sc.max_defects)
   {
+    //if(w[pi] - 1 > 1)
+    //Rcout << score << " + " << w[pi] - 1 << "*" << sc.tetrad_bonus << " - " << mismatches << " * " << sc.mismatch_penalty << "-" << bulges << " * " << sc.bulge_penalty ;
     score = score + (w[pi] - 1) * sc.tetrad_bonus
             - mismatches * sc.mismatch_penalty
             - bulges * sc.bulge_penalty;
@@ -417,6 +422,25 @@ inline bool find_run(
     }
     m.first = s;
     m.second = ++e; // correction to point on the past-the-end character
+
+    if (flags.optimize) {
+      string::const_iterator tmp_start = s;
+      int g_start = 0, g_end = 0;
+      while( *s == 'G' && s < e) { 
+        g_start++;
+        s++;
+      }
+      
+      --e;
+      while(*e == 'G' && e >= tmp_start ){
+        --e;
+        ++g_end;
+      }
+
+      m.consec_g_count_start = g_start;
+      m.consec_g_count_end = g_end;
+    }
+
     return true;
   }
 }
@@ -461,7 +485,7 @@ void debug_s_e(
  * @param sc Scoring options
  * @param ref Reference point, typically start of sequence
  * @param len Total sequence length
- * @param pqs_start Start of the first G-run
+ * @param pqs_start Start of the first G-run // vymazane ?
  * @param pqs_storage Storage object
  * @param ctable Cache table
  * @param cache_entry Candidate cache entry
@@ -493,7 +517,7 @@ void find_all_runs(
 {
   //Rcout << "find_all_runs" << endl;
   //Rcout << "start: " << *start << endl;
-  Rcout << "i: " << i << endl;
+  //Rcout << "i: " << i << endl;
   
   string::const_iterator s, e, min_e;
   int score, loop_len;
@@ -544,15 +568,22 @@ void find_all_runs(
     {
       found_any = true;
       // update search bounds
+      //Rcout << string(m[i].first, m[i].second) << endl;
       s = string::const_iterator(m[i].first);
       e = string::const_iterator(m[i].second);
       
       if (i == 0) {
         // enforce G4 total length limit to be relative to the first G-run start
         find_all_runs(
-          subject, strand, i+1, e, min(s + opts.max_len, end), m, run_re_c, opts,
-          flags, sc, ref, len, pqs_storage, ctable, cache_entry, pqs_cnt, res,
-          false, s_time
+          subject,
+          strand,
+          i+1, //quadruplex run
+          e, // start position for the current run
+          min(s + opts.max_len, end), // limit end position for the current run
+          m, // run_matches
+          run_re_c, opts, flags, sc, ref, len, pqs_storage, ctable, cache_entry, pqs_cnt, res,
+          false, // zero loop
+          s_time
         );
       } else if (i < 3) {
         loop_len = s - m[i-1].second;
@@ -591,6 +622,7 @@ void find_all_runs(
         features_t pqs_features;
         if (flags.use_default_scoring) {
           score = score_pqs(m, pqs_features, sc, opts);
+          //Rcout << score << endl;
         }
         if ((score || !flags.use_default_scoring) && sc.custom_scoring_fn != NULL) {
           check_custom_scoring_fn(score, m, sc, subject, ref);
