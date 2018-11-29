@@ -95,8 +95,7 @@ class run_match {
 public:
   string::const_iterator first;
   string::const_iterator second;
-  int consec_g_count_start;
-  int consec_g_count_end;
+  int g_count;
   int length() const {
     return second - first;
   };
@@ -118,7 +117,7 @@ inline void print_pqs(const run_match m[], int score, const string::const_iterat
   for (int i = 1; i < RUN_CNT; i++)
     Rcout << string(m[i-1].second, m[i].first) << "[" << string(m[i].first, m[i].second) << "]";
   for (int i = 0; i < RUN_CNT; i++) // test cout
-    Rcout << " " << m[i].consec_g_count_start << "|" << m[i].consec_g_count_end;
+    Rcout << " " << m[i].g_count;
   Rcout << " " << score << endl;;
 }
 
@@ -182,7 +181,7 @@ inline int score_run_defects(
   
   for (int i = 0; i < RUN_CNT; ++i) {
     if (w[i] == w[pi] && g[i] == g[pi]) {
-      ++perfects; // naco ?
+      ++perfects; 
     } else if ((w[i] == w[pi] && g[i] == g[pi] - 1)) {
       ++mismatches;
     } else if (w[i] > w[pi] && g[i] >= g[pi]) {
@@ -197,7 +196,7 @@ inline int score_run_defects(
       mismatches + bulges <= sc.max_defects)
   {
     //if(w[pi] - 1 > 1)
-    //Rcout << score << " + " << w[pi] - 1 << "*" << sc.tetrad_bonus << " - " << mismatches << " * " << sc.mismatch_penalty << "-" << bulges << " * " << sc.bulge_penalty ;
+    //Rcout << score << " + " << w[pi] - 1 << " * " << sc.tetrad_bonus << " - " << mismatches << " * " << sc.mismatch_penalty << " - " << bulges << " * " << sc.bulge_penalty ;
     score = score + (w[pi] - 1) * sc.tetrad_bonus
             - mismatches * sc.mismatch_penalty
             - bulges * sc.bulge_penalty;
@@ -425,20 +424,26 @@ inline bool find_run(
 
     if (flags.optimize) {
       string::const_iterator tmp_start = s;
-      int g_start = 0, g_end = 0;
+      int g_start = 0;
       while( *s == 'G' && s < e) { 
         g_start++;
         s++;
       }
-      
-      --e;
-      while(*e == 'G' && e >= tmp_start ){
-        --e;
-        ++g_end;
-      }
 
-      m.consec_g_count_start = g_start;
-      m.consec_g_count_end = g_end;
+      if(g_start == m.length()) {
+        m.g_count = g_start;
+      }
+      else {
+        int g_end = 0;
+        --e;
+        while(*e == 'G' && e >= tmp_start ){
+          --e;
+          ++g_end;
+        }
+        m.g_count = g_start + g_end;
+       // Rcout << m.g_count;
+      }
+      
     }
 
     return true;
@@ -513,7 +518,9 @@ void find_all_runs(
     int &pqs_cnt,
     results &res,
     bool zero_loop,
-    chrono::system_clock::time_point s_time)
+    chrono::system_clock::time_point s_time,
+    int min_g,
+    int defect_count)
 {
   //Rcout << "find_all_runs" << endl;
   //Rcout << "start: " << *start << endl;
@@ -573,7 +580,20 @@ void find_all_runs(
       e = string::const_iterator(m[i].second);
       
       if (i == 0) {
+        if (flags.optimize) {
+          //skontroluj pocet G
+          //inak continue
+          defect_count = 0;
+          min_g = m[i].g_count;
+          if (m[i].g_count != m[i].length()) defect_count++;
+          score = (min_g - 1) * sc.tetrad_bonus - defect_count * min(sc.bulge_penalty, sc.mismatch_penalty); // nie min_g/2 ?
+          if(score <= cache_entry.max_scores[0]) {
+            continue;
+          }
+        }
         // enforce G4 total length limit to be relative to the first G-run start
+        int tmp_dc = defect_count;
+        int tmp_mg = min_g;
         find_all_runs(
           subject,
           strand,
@@ -583,18 +603,39 @@ void find_all_runs(
           m, // run_matches
           run_re_c, opts, flags, sc, ref, len, pqs_storage, ctable, cache_entry, pqs_cnt, res,
           false, // zero loop
-          s_time
+          s_time,
+          min_g,
+          defect_count
         );
+        defect_count = tmp_dc;
+        min_g = tmp_mg;
       } else if (i < 3) {
         loop_len = s - m[i-1].second;
         if (loop_len > opts.loop_max_len) {
           return; // skip too long loops
         }
+        if (flags.optimize) {
+          //skontroluj pocet G
+          //inak return 
+          if(m[i].g_count < min_g) {
+            min_g = m[i].g_count;
+          }
+          if (m[i].g_count != m[i].length()) defect_count++;
+          score = (min_g - 1) * sc.tetrad_bonus - defect_count * min(sc.bulge_penalty, sc.mismatch_penalty); // nie min_g/2 ?
+          Rcout << score << endl;
+          if(score <= cache_entry.max_scores[0]) {
+            return;
+          }
+        }
+        int tmp_dc = defect_count;
+        int tmp_mg = min_g;
         find_all_runs(
           subject, strand, i+1, e, end, m, run_re_c, opts, flags, sc, ref, len,
           pqs_storage, ctable, cache_entry, pqs_cnt, res,
-          (loop_len == 0 ? true : zero_loop), s_time
+          (loop_len == 0 ? true : zero_loop), s_time, min_g, defect_count
         );
+        defect_count = tmp_dc;
+        min_g = tmp_mg;
       } else {
         /* Check user interrupt after reasonable amount of PQS identified to react
          * on important user signals. I.e. he might want to abort the computation. */
@@ -622,7 +663,6 @@ void find_all_runs(
         features_t pqs_features;
         if (flags.use_default_scoring) {
           score = score_pqs(m, pqs_features, sc, opts);
-          //Rcout << score << endl;
         }
         if ((score || !flags.use_default_scoring) && sc.custom_scoring_fn != NULL) {
           check_custom_scoring_fn(score, m, sc, subject, ref);
@@ -718,11 +758,13 @@ void pqs_search(
   pqs_storage_non_overlapping_revised pqs_storage_nov(seq.begin());
   pqs_storage &pqs_storage = select_pqs_storage(opts.overlapping, pqs_storage_ov, pqs_storage_nov);
   
+  int min_g = 0, defect_count = 0;
+  
   // Global sequence length is the only limit for the first G-run
   find_all_runs(
     subject, strand, 0, seq.begin(), seq.end(), m, run_re_c, opts, flags, sc,
     seq.begin(), seq.length(), pqs_storage, ctable,
-    cache_entry, pqs_cnt, res, false, chrono::system_clock::now()
+    cache_entry, pqs_cnt, res, false, chrono::system_clock::now(), min_g, defect_count
   );
   pqs_storage.export_pqs(res, seq.begin(), strand);
 }
