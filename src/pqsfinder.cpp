@@ -96,6 +96,7 @@ public:
   string::const_iterator first;
   string::const_iterator second;
   int g_count;
+  bool defect;
   int length() const {
     return second - first;
   };
@@ -116,8 +117,6 @@ inline void print_pqs(const run_match m[], int score, const string::const_iterat
   Rcout << m[0].first - ref + 1 << "-" << m[3].second - ref << " " << "[" << string(m[0].first, m[0].second) << "]";
   for (int i = 1; i < RUN_CNT; i++)
     Rcout << string(m[i-1].second, m[i].first) << "[" << string(m[i].first, m[i].second) << "]";
-  for (int i = 0; i < RUN_CNT; i++) // test cout
-    Rcout << " " << m[i].g_count;
   Rcout << " " << score << endl;;
 }
 
@@ -520,7 +519,7 @@ void find_all_runs(
     bool zero_loop,
     chrono::system_clock::time_point s_time,
     int min_g,
-    int defect_count)
+    bool defect)
 {
   //Rcout << "find_all_runs" << endl;
   //Rcout << "start: " << *start << endl;
@@ -583,17 +582,15 @@ void find_all_runs(
         if (flags.optimize) {
           //skontroluj pocet G
           //inak continue
-          defect_count = 0;
           min_g = m[i].g_count;
-          if (m[i].g_count != m[i].length()) defect_count++;
-          score = (min_g - 1) * sc.tetrad_bonus - defect_count * min(sc.bulge_penalty, sc.mismatch_penalty); // nie min_g/2 ?
-          if(score <= cache_entry.max_scores[0]) {
+          if (m[i].g_count != m[i].length()) m[i].defect = true;
+          int defect_count = m[i].defect ? 1 : 0;
+          score = max((min_g - 1) * sc.tetrad_bonus - defect_count * min(sc.bulge_penalty, sc.mismatch_penalty), 0); 
+          if(score < cache_entry.max_scores[0]) {
             continue;
           }
         }
         // enforce G4 total length limit to be relative to the first G-run start
-        int tmp_dc = defect_count;
-        int tmp_mg = min_g;
         find_all_runs(
           subject,
           strand,
@@ -605,10 +602,8 @@ void find_all_runs(
           false, // zero loop
           s_time,
           min_g,
-          defect_count
+          defect
         );
-        defect_count = tmp_dc;
-        min_g = tmp_mg;
       } else if (i < 3) {
         loop_len = s - m[i-1].second;
         if (loop_len > opts.loop_max_len) {
@@ -620,22 +615,21 @@ void find_all_runs(
           if(m[i].g_count < min_g) {
             min_g = m[i].g_count;
           }
-          if (m[i].g_count != m[i].length()) defect_count++;
-          score = (min_g - 1) * sc.tetrad_bonus - defect_count * min(sc.bulge_penalty, sc.mismatch_penalty); // nie min_g/2 ?
-          Rcout << score << endl;
-          if(score <= cache_entry.max_scores[0]) {
-            return;
+          if (m[i].g_count != m[i].length()) m[i].defect = true;
+          int defect_count = 0;
+          for(int j = 0; j <= 1; j++) {
+              if(m[i].defect) defect_count++;
+          }
+          score = max((min_g - 1) * sc.tetrad_bonus - defect_count * min(sc.bulge_penalty, sc.mismatch_penalty), 0);
+          if(score < cache_entry.max_scores[0]) {
+            continue;
           }
         }
-        int tmp_dc = defect_count;
-        int tmp_mg = min_g;
         find_all_runs(
           subject, strand, i+1, e, end, m, run_re_c, opts, flags, sc, ref, len,
           pqs_storage, ctable, cache_entry, pqs_cnt, res,
-          (loop_len == 0 ? true : zero_loop), s_time, min_g, defect_count
+          (loop_len == 0 ? true : zero_loop), s_time, min_g, defect
         );
-        defect_count = tmp_dc;
-        min_g = tmp_mg;
       } else {
         /* Check user interrupt after reasonable amount of PQS identified to react
          * on important user signals. I.e. he might want to abort the computation. */
@@ -758,13 +752,14 @@ void pqs_search(
   pqs_storage_non_overlapping_revised pqs_storage_nov(seq.begin());
   pqs_storage &pqs_storage = select_pqs_storage(opts.overlapping, pqs_storage_ov, pqs_storage_nov);
   
-  int min_g = 0, defect_count = 0;
+  int min_g = 0;
+  bool defect = false;
   
   // Global sequence length is the only limit for the first G-run
   find_all_runs(
     subject, strand, 0, seq.begin(), seq.end(), m, run_re_c, opts, flags, sc,
     seq.begin(), seq.length(), pqs_storage, ctable,
-    cache_entry, pqs_cnt, res, false, chrono::system_clock::now(), min_g, defect_count
+    cache_entry, pqs_cnt, res, false, chrono::system_clock::now(), min_g, defect
   );
   pqs_storage.export_pqs(res, seq.begin(), strand);
 }
