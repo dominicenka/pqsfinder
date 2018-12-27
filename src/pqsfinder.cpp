@@ -542,23 +542,6 @@ void find_all_runs(
     }
   }
   
-  if(flags.optimize) {
-    if( i == 0 ){
-      tmp_min_tetrads = std::numeric_limits<int>::max();
-      tmp_defect_count = 0;
-    }
-    else {
-      tmp_min_tetrads = min(min_tetrads, m[i-1].tetrad_count);
-      tmp_defect_count = m[i-1].tetrad_count == m[i-1].length() ? current_defect_count : current_defect_count + 1;
-      
-      score = max((tmp_min_tetrads - 1) * sc.tetrad_bonus - tmp_defect_count * min(sc.bulge_penalty, sc.mismatch_penalty), 0); 
-      //Rcout << score << endl;
-      if(score < cache_entry.max_scores[0]) {
-        return;
-      }
-    }
-  }
-  
   for (s = start; s < end; ++s)
   {
     if (i == 0)
@@ -592,6 +575,23 @@ void find_all_runs(
 
     for (e = end; e >= min_e && find_run(s, e, m[i], run_re_c, opts, flags); e--)
     {
+      if(flags.optimize) {
+        if( i == 0 ){
+          tmp_min_tetrads = std::numeric_limits<int>::max();
+          tmp_defect_count = 0;
+        }
+        else {
+          tmp_min_tetrads = min(min_tetrads, m[i-1].tetrad_count);
+          tmp_defect_count = m[i-1].tetrad_count == m[i-1].length() ? current_defect_count : current_defect_count + 1;
+          
+          score = max((tmp_min_tetrads - 1) * sc.tetrad_bonus - tmp_defect_count * min(sc.bulge_penalty, sc.mismatch_penalty), 0); 
+          //Rcout << score << endl;
+          if(score < cache_entry.max_scores[0]) {
+            continue;
+          }
+        }
+      }
+      
       found_any = true;
       // update search bounds
       //Rcout << string(m[i].first, m[i].second) << endl;
@@ -629,8 +629,8 @@ void find_all_runs(
         if (loop_len > opts.loop_max_len) {
           return; // skip too long loops
         }
-        if (flags.optimize) {
-        /*  //skontroluj pocet G
+       /*if (flags.optimize) {
+          //skontroluj pocet G
           //inak return 
           if(m[i].g_count < min_g) {
             min_g = m[i].g_count;
@@ -643,8 +643,8 @@ void find_all_runs(
           score = max((min_g - 1) * sc.tetrad_bonus - defect_count * min(sc.bulge_penalty, sc.mismatch_penalty), 0);
           if(score < cache_entry.max_scores[0]) {
             continue;
-          }*/
-        }
+          }
+        }*/
         find_all_runs(
           subject, strand, i+1, e, end, m, run_re_c, opts, flags, sc, ref, len,
           pqs_storage, ctable, cache_entry, pqs_cnt, res,
