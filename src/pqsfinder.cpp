@@ -520,7 +520,8 @@ void find_all_runs(
     bool zero_loop,
     chrono::system_clock::time_point s_time,
     int min_tetrads,
-    int current_defect_count)
+    int current_defect_count,
+    int lengths)
 {
   //Rcout << "find_all_runs" << endl;
   //Rcout << "start: " << *start << endl;
@@ -532,6 +533,7 @@ void find_all_runs(
   bool found_any;
   int tmp_min_tetrads;
   int tmp_defect_count;
+  int tmp_lengths;
 
   if (i > 0) {
     loop_len = start - m[i-1].second;
@@ -579,12 +581,20 @@ void find_all_runs(
         if( i == 0 ){
           tmp_min_tetrads = std::numeric_limits<int>::max();
           tmp_defect_count = 0;
+          tmp_lengths = 0;
         }
         else {
           tmp_min_tetrads = min(min_tetrads, m[i-1].tetrad_count);
           tmp_defect_count = m[i-1].tetrad_count == m[i-1].length() ? current_defect_count : current_defect_count + 1;
           
-          score = max((tmp_min_tetrads - 1) * sc.tetrad_bonus - tmp_defect_count * min(sc.bulge_penalty, sc.mismatch_penalty), 0); 
+          tmp_lengths = lengths + m[i-1].length();
+          
+          double mean = (double) tmp_lengths / 3.0; 
+          
+          //int loop_mean_score = max((int) round(sc.loop_mean_factor * pow(mean, sc.loop_mean_exponent)), 0);
+          int loop_mean_score = max((int) round(sc.loop_mean_factor * mean), 0);
+          score = max((tmp_min_tetrads - 1) * sc.tetrad_bonus - tmp_defect_count * min(sc.bulge_penalty, sc.mismatch_penalty) - loop_mean_score , 0); 
+          
           //Rcout << score << endl;
           if(score < cache_entry.max_scores[0]) {
             continue;
@@ -592,24 +602,36 @@ void find_all_runs(
         }
       }
       
+      /*if(flags.optimize) {
+          if( i == 0 ){
+            tmp_min_tetrads = m[i].tetrad_count;
+            tmp_defect_count = m[i].tetrad_count == m[i].length() ? 0 : 1;
+            tmp_lengths = m[i].length();
+          }
+          else {
+            tmp_min_tetrads = min(min_tetrads, m[i].tetrad_count);
+            tmp_defect_count = m[i].tetrad_count == m[i].length() ? current_defect_count : current_defect_count + 1;
+            
+            tmp_lengths = lengths + m[i].length();
+            
+          }
+          double mean = (double) tmp_lengths / 3.0; 
+          
+          int loop_len_score = max((int) round(sc.loop_mean_factor * pow(mean, sc.loop_mean_exponent)), 0);
+          
+          score = max((tmp_min_tetrads - 1) * sc.tetrad_bonus - tmp_defect_count * min(sc.bulge_penalty, sc.mismatch_penalty), 0); 
+          //Rcout << score << endl;
+          if(score < cache_entry.max_scores[0]) {
+            continue;
+          }
+      }*/
+      
       found_any = true;
       // update search bounds
-      //Rcout << string(m[i].first, m[i].second) << endl;
       s = string::const_iterator(m[i].first);
       e = string::const_iterator(m[i].second);
       
       if (i == 0) {
-       /* if (flags.optimize) {
-          //skontroluj pocet G
-          //inak continue
-          min_g = m[i].g_count;
-          if (m[i].g_count != m[i].length()) m[i].defect = true;
-          int defect_count = m[i].defect ? 1 : 0;
-          score = max((min_g - 1) * sc.tetrad_bonus - defect_count * min(sc.bulge_penalty, sc.mismatch_penalty), 0); 
-          if(score < cache_entry.max_scores[0]) {
-            continue;
-          }
-        }*/
         // enforce G4 total length limit to be relative to the first G-run start
         find_all_runs(
           subject,
@@ -622,33 +644,18 @@ void find_all_runs(
           false, // zero loop
           s_time,
           tmp_min_tetrads,
-          tmp_defect_count
+          tmp_defect_count,
+          tmp_lengths
         );
       } else if (i < 3) {
         loop_len = s - m[i-1].second;
         if (loop_len > opts.loop_max_len) {
           return; // skip too long loops
         }
-       /*if (flags.optimize) {
-          //skontroluj pocet G
-          //inak return 
-          if(m[i].g_count < min_g) {
-            min_g = m[i].g_count;
-          }
-          if (m[i].g_count != m[i].length()) m[i].defect = true;
-          int defect_count = 0;
-          for(int j = 0; j <= 1; j++) {
-              if(m[i].defect) defect_count++;
-          }
-          score = max((min_g - 1) * sc.tetrad_bonus - defect_count * min(sc.bulge_penalty, sc.mismatch_penalty), 0);
-          if(score < cache_entry.max_scores[0]) {
-            continue;
-          }
-        }*/
         find_all_runs(
           subject, strand, i+1, e, end, m, run_re_c, opts, flags, sc, ref, len,
           pqs_storage, ctable, cache_entry, pqs_cnt, res,
-          (loop_len == 0 ? true : zero_loop), s_time, tmp_min_tetrads, tmp_defect_count
+          (loop_len == 0 ? true : zero_loop), s_time, tmp_min_tetrads, tmp_defect_count, tmp_lengths
         );
       } else {
         /* Check user interrupt after reasonable amount of PQS identified to react
@@ -772,14 +779,15 @@ void pqs_search(
   pqs_storage_non_overlapping_revised pqs_storage_nov(seq.begin());
   pqs_storage &pqs_storage = select_pqs_storage(opts.overlapping, pqs_storage_ov, pqs_storage_nov);
   
-  int min_tetrads = 0;
+  int min_tetrads = std::numeric_limits<int>::max();
   int current_defect_count = 0;
+  int lengths = 0;
   
   // Global sequence length is the only limit for the first G-run
   find_all_runs(
     subject, strand, 0, seq.begin(), seq.end(), m, run_re_c, opts, flags, sc,
     seq.begin(), seq.length(), pqs_storage, ctable,
-    cache_entry, pqs_cnt, res, false, chrono::system_clock::now(), min_tetrads, current_defect_count
+    cache_entry, pqs_cnt, res, false, chrono::system_clock::now(), min_tetrads, current_defect_count, lengths
   );
   pqs_storage.export_pqs(res, seq.begin(), strand);
 }
