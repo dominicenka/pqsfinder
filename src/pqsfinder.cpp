@@ -586,16 +586,13 @@ void find_all_runs(
         else {
           tmp_min_tetrads = min(min_tetrads, m[i-1].tetrad_count);
           tmp_defect_count = m[i-1].tetrad_count == m[i-1].length() ? current_defect_count : current_defect_count + 1;
-          
-          tmp_lengths = lengths + m[i-1].length();
+          tmp_lengths = lengths + m[i].first - m[i-1].second;
           
           double mean = (double) tmp_lengths / 3.0; 
+          int loop_mean_score = max((int) round(sc.loop_mean_factor * pow(mean, sc.loop_mean_exponent)), 0);
           
-          //int loop_mean_score = max((int) round(sc.loop_mean_factor * pow(mean, sc.loop_mean_exponent)), 0);
-          int loop_mean_score = max((int) round(sc.loop_mean_factor * mean), 0);
           score = max((tmp_min_tetrads - 1) * sc.tetrad_bonus - tmp_defect_count * min(sc.bulge_penalty, sc.mismatch_penalty) - loop_mean_score , 0); 
           
-          //Rcout << score << endl;
           if(score < cache_entry.max_scores[0]) {
             continue;
           }
@@ -606,20 +603,20 @@ void find_all_runs(
           if( i == 0 ){
             tmp_min_tetrads = m[i].tetrad_count;
             tmp_defect_count = m[i].tetrad_count == m[i].length() ? 0 : 1;
-            tmp_lengths = m[i].length();
+            tmp_lengths = 0;
           }
           else {
             tmp_min_tetrads = min(min_tetrads, m[i].tetrad_count);
             tmp_defect_count = m[i].tetrad_count == m[i].length() ? current_defect_count : current_defect_count + 1;
             
-            tmp_lengths = lengths + m[i].length();
+            tmp_lengths = lengths + m[i].first - m[i -1].second;
             
           }
           double mean = (double) tmp_lengths / 3.0; 
           
           int loop_len_score = max((int) round(sc.loop_mean_factor * pow(mean, sc.loop_mean_exponent)), 0);
           
-          score = max((tmp_min_tetrads - 1) * sc.tetrad_bonus - tmp_defect_count * min(sc.bulge_penalty, sc.mismatch_penalty), 0); 
+          score = max((tmp_min_tetrads - 1) * sc.tetrad_bonus - tmp_defect_count * min(sc.bulge_penalty, sc.mismatch_penalty) - loop_len_score, 0); 
           //Rcout << score << endl;
           if(score < cache_entry.max_scores[0]) {
             continue;
