@@ -16,6 +16,7 @@
 #include <chrono>
 #include <boost/regex.hpp>
 #include <limits>
+#include <vector>
 #ifdef _GLIBCXX_DEBUG
 #include <google/profiler.h>
 #endif
@@ -43,6 +44,7 @@ using namespace std;
 // Implementation constants
 static const int RUN_CNT = 4;
 
+std::vector<int> loop_len_pow_values;
 
 class scoring {
 public:
@@ -588,10 +590,11 @@ void find_all_runs(
           tmp_defect_count = m[i-1].tetrad_count == m[i-1].length() ? current_defect_count : current_defect_count + 1;
           tmp_lengths = lengths + m[i].first - m[i-1].second;
           
-          double mean = (double) tmp_lengths / 3.0; 
-          int loop_mean_score = max((int) round(sc.loop_mean_factor * pow(mean, sc.loop_mean_exponent)), 0);
+          //double mean = (double) tmp_lengths / 3.0; 
+          //int loop_mean_score = loop_len_pow_values.at(tmp_lengths);
+          //int loop_mean_score = 0;
           
-          score = max((tmp_min_tetrads - 1) * sc.tetrad_bonus - tmp_defect_count * min(sc.bulge_penalty, sc.mismatch_penalty) - loop_mean_score , 0); 
+          score = max((tmp_min_tetrads - 1) * sc.tetrad_bonus - tmp_defect_count * min(sc.bulge_penalty, sc.mismatch_penalty) - loop_len_pow_values.at(tmp_lengths) , 0); 
           
           if(score < cache_entry.max_scores[0]) {
             continue;
@@ -599,7 +602,7 @@ void find_all_runs(
         }
       }
       
-      /*if(flags.optimize) {
+     /* if(flags.optimize) {
           if( i == 0 ){
             tmp_min_tetrads = m[i].tetrad_count;
             tmp_defect_count = m[i].tetrad_count == m[i].length() ? 0 : 1;
@@ -969,6 +972,10 @@ SEXP pqsfinder(
   results res(seq.length(), opts.min_score);
   pqs_cache ctable(opts.max_len);
   boost::regex run_re_c(run_re);
+  
+  for(int i=0; i<max_len; ++i){
+    loop_len_pow_values.push_back(max((int) round(sc.loop_mean_factor * pow(i / 3.0, sc.loop_mean_exponent)), 0));
+  }
 
   if (flags.debug) {
     Rcout << "G-run regexp: " << run_re << endl;
