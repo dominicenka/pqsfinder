@@ -596,7 +596,7 @@ void find_all_runs(
           
           score = max((tmp_min_tetrads - 1) * sc.tetrad_bonus - tmp_defect_count * min(sc.bulge_penalty, sc.mismatch_penalty) - loop_len_pow_values.at(tmp_lengths) , 0); 
           
-          if(score < cache_entry.max_scores[0]) {
+          if(score < cache_entry.max_scores[0] || score < opts.min_score) {
             continue;
           }
         }
