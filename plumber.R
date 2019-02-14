@@ -39,7 +39,8 @@ function(opts, sequences) {
   maxNB <- opts['maxNB']
   maxNM <- opts['maxNM']
   maxND <- opts['maxND']
-  if (strandSense == TRUE && strandAnti == TRUE) {
+  # TODO this should be resolved on FE
+  if (strandSense == TRUE && strandAnti == TRUE) { 
     strand <- "*" 
   }
   else if (strandSense == TRUE) {
