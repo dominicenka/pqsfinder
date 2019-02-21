@@ -44,8 +44,6 @@ using namespace std;
 // Implementation constants
 static const int RUN_CNT = 4;
 
-std::vector<int> loop_len_pow_values;
-
 class scoring {
 public:
   int tetrad_bonus;
@@ -58,6 +56,8 @@ public:
   int max_bulges;
   int max_mimatches;
   int max_defects;
+  std::vector<int> loop_penalties;
+  std::vector<int> bulge_penalties;
   Function *custom_scoring_fn;
 
   scoring() {
@@ -188,7 +188,8 @@ inline int score_run_defects(
       ++mismatches;
     } else if (w[i] > w[pi] && g[i] >= g[pi]) {
       ++bulges;
-      score = score - (int) round(sc.bulge_len_factor * pow(w[i] - w[pi], sc.bulge_len_exponent));
+      //score = score - (int) round(sc.bulge_len_factor * pow(w[i] - w[pi], sc.bulge_len_exponent));
+      score = score - sc.bulge_penalties.at(w[i] - w[pi]);
     } else {
       return 0;
     }
@@ -280,9 +281,9 @@ inline int score_pqs(
   f.ll2 = l[1];
   f.ll3 = l[2];
   
-  mean = (double) (l[0] + l[1] + l[2]) / 3.0;
+  //mean = (double) (l[0] + l[1] + l[2]) / 3.0;
   
-  return max(score - (int) round(sc.loop_mean_factor * pow(mean, sc.loop_mean_exponent)), 0);
+  return max(score - sc.loop_penalties.at(l[0] + l[1] + l[2]), 0);
 }
 
 
@@ -590,7 +591,7 @@ void find_all_runs(
           tmp_defect_count = m[i-1].tetrad_count == m[i-1].length() ? current_defect_count : current_defect_count + 1;
           tmp_lengths = lengths + m[i].first - m[i-1].second;
           
-          score = max((tmp_min_tetrads - 1) * sc.tetrad_bonus - tmp_defect_count * min(sc.bulge_penalty, sc.mismatch_penalty) - loop_len_pow_values.at(tmp_lengths) , 0); 
+          score = max((tmp_min_tetrads - 1) * sc.tetrad_bonus - tmp_defect_count * min(sc.bulge_penalty, sc.mismatch_penalty) - sc.loop_penalties.at(tmp_lengths) , 0); 
           
           if(score < cache_entry.max_scores[0] || score < opts.min_score) {
             continue;
@@ -744,6 +745,7 @@ void pqs_search(
     results &res)
 {
   Rcout << "pqsSearch" << endl;
+  Rcout << "prosim bud tu" << endl;
   run_match m[RUN_CNT];
   pqs_cache::entry cache_entry(opts.max_len);
   int pqs_cnt = 0;
@@ -935,6 +937,12 @@ SEXP pqsfinder(
   sc.max_bulges = max_bulges;
   sc.max_mimatches = max_mismatches;
   sc.max_defects = max_defects;
+  for(int i = 0; i < loop_max_len * 3; ++i){
+    sc.loop_penalties.push_back(max((int) round(sc.loop_mean_factor * pow(i / 3.0, sc.loop_mean_exponent)), 0));
+  }
+  for(int i = 0; i < (run_max_len - 1); ++i){
+    sc.bulge_penalties.push_back(max((int) round(sc.bulge_len_factor * pow(i, sc.bulge_len_exponent)), 0));
+  }
 
   string seq = as<string>(as_character(subject));
   Function reverseComplement("reverseComplement");
@@ -944,10 +952,6 @@ SEXP pqsfinder(
   results res(seq.length(), opts.min_score);
   pqs_cache ctable(opts.max_len);
   boost::regex run_re_c(run_re);
-  
-  for(int i=0; i<max_len; ++i){
-    loop_len_pow_values.push_back(max((int) round(sc.loop_mean_factor * pow(i / 3.0, sc.loop_mean_exponent)), 0));
-  }
 
   if (flags.debug) {
     Rcout << "G-run regexp: " << run_re << endl;
